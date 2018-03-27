@@ -2,11 +2,11 @@
 var gulp = require('gulp'),
     less = require('gulp-less'),
     concat = require('gulp-concat'),                //多个文件合并为一个
+    autoprefixer = require('gulp-autoprefixer'),
     cleanCss = require('gulp-clean-css'),           //压缩CSS为一行；
     ugLify = require('gulp-uglify'),                //压缩js
-    imageMin = require('gulp-imagemin'),            //压缩图片
-    pngquant = require('imagemin-pngquant'),        //深度压缩
-    cache = require('gulp-cache'),                  //缓存
+    spriter = require('gulp-css-spriter'),
+    rename = require('gulp-rename'),
     rev = require('gulp-rev'),                      //对文件名加MD5后缀
     revCollector = require('gulp-rev-collector'),   //路径替换
     fileinclude = require('gulp-file-include'),     //html模板
@@ -36,14 +36,27 @@ gulp.task('html', function () {
         .pipe(gulp.dest('./dist'));
 });
 
-//实时编译less
+//编译less 合并图片 合并css
 gulp.task('less', function () {
-    gulp.src(['./src/less/*.less'])                 //多个文件以数组形式传入
+    var timestamp = +new Date();
+    return gulp.src(['./src/less/**/*.less'])//比如recharge.css这个样式里面什么都不用改，是你想要合并的图就要引用这个样式。 很重要 注意(recharge.css)这个是我的项目。别傻到家抄我一样的。
+        .pipe(spriter({
+            'spriteSheet': './dist/images/spritesheet' + timestamp + '.png', //这是雪碧图自动合成的图。 很重要
+            'pathToSpriteSheetFromCSS': '../images/spritesheet' + timestamp + '.png', //这是在css引用的图片路径，很重要
+            'spritesmithOptions': {
+                padding: 10
+            }
+        }))
+        .pipe(less())
         .pipe(changed('dist/css', {hasChanged: changed.compareSha1Digest}))
-        .pipe(less())                               //编译less文件
-        .pipe(concat('style.min.css'))              //合并之后生成style.min.css
+        .pipe(concat('strong.min.css'))              //合并之后生成style.min.css
         .pipe(cleanCss())                           //压缩新生成的css
-        .pipe(gulp.dest('dist/css/'))               //将会在css下生成style.min.css
+        .pipe(autoprefixer({
+            browsers: ['last 2 Chrome versions', 'Safari >0', 'Explorer >0', 'Edge >0', 'Opera >0', 'Firefox >=20'],
+            cascade: false,
+            remove: false,
+        }))
+        .pipe(gulp.dest('./dist/css')) //最后生成出来
         .pipe(browserSync.reload({stream: true}));
 });
 
@@ -56,19 +69,6 @@ gulp.task("script", function () {
         .pipe(gulp.dest('dist/js'))
         .pipe(browserSync.reload({stream: true}));
 });
-
-
-//图片压缩
-gulp.task('images', function () {
-    gulp.src('src/images/*.{png,jpg,gif,ico}')
-        .pipe(cache(imageMin({
-            progressive: true,
-            svgoPlugins: [{removeViewBox: false}],
-            use: [pngquant()]
-        })))
-        .pipe(gulp.dest('dist/images'));
-});
-
 
 // 配置服务器
 gulp.task('serve', function () {
@@ -84,4 +84,4 @@ gulp.task('serve', function () {
     gulp.watch('./src/js/**/*.js', ['script']).on('change', browserSync.reload);
 });
 
-gulp.task('default', ['clean', 'html', 'less', 'script', 'images','serve']);
+gulp.task('default', ['clean', 'html', 'less', 'script', 'serve']);
