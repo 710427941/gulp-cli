@@ -6,9 +6,13 @@ var gulp = require('gulp'),
     cleanCss = require('gulp-clean-css'),           //压缩CSS为一行；
     ugLify = require('gulp-uglify'),                //压缩js
     spriter = require('gulp-css-spriter'),
-    rename = require('gulp-rename'),
+    runSequence = require('run-sequence'),
     rev = require('gulp-rev'),                      //对文件名加MD5后缀
-    revCollector = require('gulp-rev-collector'),   //路径替换
+    revC = require('gulp-rev-collector'),           //路径替换
+    RevAll = require('gulp-rev-all'),
+    cssMin = require('gulp-csso'),
+    rename = require('gulp-rename'),
+    uglify = require('gulp-uglify'),
     fileinclude = require('gulp-file-include'),     //html模板
     htmlMin = require('gulp-htmlmin'),              //压缩html
     changed = require('gulp-changed'),              //检查改变状态
@@ -27,7 +31,7 @@ gulp.task('html', function () {
         .pipe(changed('./dist', {hasChanged: changed.compareSha1Digest}))
         .pipe(htmlMin({
             removeComments: true,                   //清除HTML注释
-            collapseWhitespace: true,               //压缩HTML
+            collapseWhitespace: false,               //压缩HTML
             removeScriptTypeAttributes: true,       //删除<script>的type="text/javascript"
             removeStyleLinkTypeAttributes: true,    //删除<style>和<link>的type="text/css"
             minifyJS: true,                         //压缩页面JS
@@ -70,6 +74,68 @@ gulp.task("script", function () {
         .pipe(browserSync.reload({stream: true}));
 });
 
+//定义css、js、html源文件路径
+var cssSrc = 'dist/css/*.min.css',
+    jsSrc = 'dist/js/*.min.js',
+    htmlSrc = 'src/*.html';
+
+// css打版本
+gulp.task('revCss', function () {
+    return gulp.src(cssSrc)       //指定获取到src下的所有css文件。
+        .pipe(cssMin())     //执行压缩操作
+        .pipe(RevAll.revision({hashLength: 10}))
+        .pipe(gulp.dest('./dist/css'));//生成目标压缩css文件
+});
+
+//生成css版本修改中间文件
+gulp.task('cssPathUpdate', function () {
+    return gulp.src(cssSrc)       //指定获取到src下的所有css文件。
+        .pipe(cssMin())     //执行压缩操作
+        .pipe(rev())
+        .pipe(rev.manifest())
+        .pipe(gulp.dest('./dist/css'));
+});
+
+// js打版本
+gulp.task('revJs', function () {
+    return gulp.src(jsSrc)        //指定获取到src下的所有js文件。
+        .pipe(uglify())         //执行压缩操作
+        .pipe(RevAll.revision({hashLength: 10}))
+        .pipe(rename({
+            suffix: '.min'
+        }))
+        .pipe(gulp.dest('./dist/js'));//生成目标压缩js文件
+});
+
+//生成js版本修改中间文件
+gulp.task('jsPathUpdate', function () {
+    return gulp.src(jsSrc)       //指定获取到src下的所有js文件。
+        .pipe(uglify())        //执行压缩操作
+        .pipe(rev())
+        .pipe(rev.manifest())
+        .pipe(gulp.dest('./dist/js'));
+});
+
+//Html替换css、js引用文件版本
+gulp.task('revHtml', function () {
+    return gulp.src(['dist/**/*.json', htmlSrc])
+        .pipe(revC())
+        .pipe(gulp.dest('dist'));
+});
+
+//开发构建
+gulp.task('dev', function (done) {
+    runSequence(
+        ['revCss'],
+        ['revJs'],
+        ['cssPathUpdate'],
+        ['jsPathUpdate'],
+        ['revHtml'],
+        done);
+});
+
+
+
 // 配置服务器
 gulp.task('serve', function () {
     browserSync.init({
@@ -84,4 +150,16 @@ gulp.task('serve', function () {
     gulp.watch('./src/js/**/*.js', ['script']).on('change', browserSync.reload);
 });
 
-gulp.task('default', ['clean', 'html', 'less', 'script', 'serve']);
+gulp.task('default', ['clean', 'html', 'less', 'script', 'dev', 'serve']);
+
+//另外需要修改gulp-rev-all目录下revisioner.js文件第333行，修改为
+//
+// filename = filename + '_' + file.revHash.substr(0, this.options.hashLength) + ext;
+
+//修改/rev-path/index.js第10行，修改为
+//
+// return filename + '_' + hash + '.min' + ext;
+
+//修改gulp-rev-collector/index.js第11行，修改为
+//
+// revSuffix: '_[0-9a-f]{8,10}-?.min'
